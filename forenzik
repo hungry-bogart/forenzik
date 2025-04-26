@@ -1,0 +1,279 @@
+#!/bin/bash
+
+# Variables
+DEFAULT_DIRECTORY=$(pwd)
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RESULTS_DIR="stego_results_$TIMESTAMP"
+
+# Create results directory
+mkdir -p "$RESULTS_DIR"
+
+# Banner function makes the banner reproducible for other scripts
+function banner {
+    echo -e "\033[95m#########::#######::#########::#########::##::: ##::#########:####::##:::##:\033[0m"
+    sleep 0.2
+    echo -e "\033[95m##.....:::##.... ##: ##.... ##: ##.....:: ###:: ##:..... ##::. ##:: ##::'##::\033[0m"
+    sleep 0.2
+    echo -e "\033[95m##::::::: ##:::: ##: ##:::: ##: ##::::::: ####: ##::::: ##:::: ##:: ##:'##:::\033[0m"
+    sleep 0.2
+    echo -e "\033[95m######::: ##:::: ##: ########:: ######::: ## ## ##:::: ##::::: ##:: #####::::\033[0m"
+    sleep 0.2
+    echo -e "\033[95m##...:::: ##:::: ##: ##.. ##::: ##...:::: ##. ####::: ##:::::: ##:: ##. ##:::\033[0m"
+    sleep 0.2
+    echo -e "\033[95m##::::::: ##:::: ##: ##::. ##:: ##::::::: ##:. ###:: ##::::::: ##:: ##:. ##::\033[0m"
+    sleep 0.2
+    echo -e "\033[95m##:::::::. #######:: ##:::. ##: ########: ##::. ##: ########::####: ##::. ##:\033[0m"
+    sleep 0.2
+    echo -e "\033[95m..:::::::::.......:::..:::::..::........::..::::..::........::....::..::::..\033[0m"
+    sleep 0.2
+    echo ""
+    echo -e "\033[97mBrought to you by Coney Island Arcade\033[0m"
+    echo ""
+}
+
+# Dependency check, locale setup, terminal compatibility check, and color support check
+function check_dependencies {
+    echo "Checking dependencies..."
+    dependencies=("gum" "exiftool" "binwalk" "pngcheck" "mat2" "aperisolve")
+    missing_dependencies=()
+
+    for dependency in "${dependencies[@]}"; do
+        if ! command -v "$dependency" &> /dev/null; then
+            missing_dependencies+=("$dependency")
+        fi
+    done
+
+    if [ ${#missing_dependencies[@]} -gt 0 ]; then
+        echo "You are missing the following dependencies:"
+        for dependency in "${missing_dependencies[@]}"; do
+            echo "- $dependency"
+        done
+
+        response=$(gum input --prompt "Would you like to install them now? (yes/no): ")
+        if [ "$response" = "yes" ]; then
+            echo "Installing dependencies..."
+            for dependency in "${missing_dependencies[@]}"; do
+                case "$dependency" in
+                    gum) sudo apt-get install gum -y;;
+                    exiftool) sudo apt-get install exiftool -y;;
+                    binwalk) sudo apt-get install binwalk -y;;
+                    pngcheck) sudo apt-get install pngcheck -y;;
+                    mat2) sudo apt-get install mat2 -y;;
+                    aperisolve)
+                        echo "Installing Aperi'Solve... Please note that Aperi'Solve will open a browser with the results."
+                        sudo sh -c "$(curl -fs https://www.aperisolve.com/install.sh)";;
+                esac
+            done
+        else
+            echo "Exiting script..."
+            exit 1
+        fi
+    else
+        echo "All dependencies are installed."
+    fi
+
+    # Check locale for Unicode support
+    if [[ ! "$LANG" =~ "UTF-8" ]] || [[ ! "$LC_ALL" =~ "UTF-8" ]]; then
+        echo "Warning: Your locale does not support UTF-8, which is required for gum borders."
+        echo "Attempting to set locale to en_US.UTF-8..."
+        export LANG=en_US.UTF-8
+        export LC_ALL=en_US.UTF-8
+    fi
+
+    # Test gum border rendering
+    test_output=$(echo "Test Border" | gum style --border "rounded" --padding "1 1" 2>/dev/null)
+    if [ -z "$test_output" ]; then
+        echo "Warning: gum borders may not render correctly in this terminal."
+        echo "Please use a terminal that supports Unicode and true color (e.g., iTerm2, Alacritty, Windows Terminal)."
+        echo "Falling back to plain output for better compatibility."
+        USE_BORDERS="false"
+    else
+        USE_BORDERS="true"
+    fi
+
+    # Check for true color support
+    if [[ "$COLORTERM" == "truecolor" || "$COLORTERM" == "24bit" ]]; then
+        BORDER_COLOR="#FF00FF"  # True color magenta
+    else
+        BORDER_COLOR="201"  # 256-color magenta fallback
+        echo "Warning: True color not supported in this terminal. Falling back to 256-color magenta."
+    fi
+}
+
+# Helper function to style output based on border support
+function style_output {
+    local output="$1"
+    if [ "$USE_BORDERS" = "true" ]; then
+        echo "$output" | gum style --border "rounded" --padding "1 1" --border-foreground "$BORDER_COLOR"
+    else
+        echo "$output"
+    fi
+}
+
+# Displays a menu to the user
+function menu {
+    echo "CTF Image Steganography Checklist"
+    echo "-------------------------------"
+    echo ""
+    echo -e "\033[97mSelect an Option\033[0m"
+    options=("File" "Strings" "Exif" "Binwalk" "Pngcheck" "Mat2" "Aperi'Solve" "Run All" "Exit")
+    selected_option=$(gum choose "${options[@]}")
+
+    case $selected_option in
+        "File")
+            output=$(stdbuf -oL file "$IMAGE_FILE" 2>/dev/null)
+            if [ -z "$output" ]; then
+                style_output "Error: No output from file command."
+            else
+                echo "Debug: Output before styling: '$output'" >&2
+                echo "$output" > "$RESULTS_DIR/file_output.txt"
+                style_output "$output"
+                style_output "Saved to $RESULTS_DIR/file_output.txt"
+            fi
+            ;;
+        "Strings")
+            output=$(stdbuf -oL strings -n 7 -t x "$IMAGE_FILE" 2>/dev/null)
+            if [ -z "$output" ]; then
+                style_output "Error: No strings found in the file."
+            else
+                echo "Debug: Output before paging: '$output'" >&2
+                echo "$output" > "$RESULTS_DIR/strings_output.txt"
+                echo "$output" | gum pager
+                style_output "Saved to $RESULTS_DIR/strings_output.txt"
+            fi
+            ;;
+        "Exif")
+            output=$(stdbuf -oL exiftool "$IMAGE_FILE" 2>/dev/null)
+            if [ -z "$output" ]; then
+                style_output "Error: No EXIF data found."
+            else
+                echo "Debug: Output before paging: '$output'" >&2
+                echo "$output" > "$RESULTS_DIR/exif_output.txt"
+                echo "$output" | gum pager
+                style_output "Saved to $RESULTS_DIR/exif_output.txt"
+            fi
+            ;;
+        "Binwalk")
+            output=$(stdbuf -oL binwalk -Me "$IMAGE_FILE" 2>/dev/null)
+            if [ -z "$output" ]; then
+                style_output "Error: Binwalk produced no output."
+            else
+                echo "Debug: Output before paging: '$output'" >&2
+                echo "$output" > "$RESULTS_DIR/binwalk_output.txt"
+                echo "$output" | gum pager
+                style_output "Saved to $RESULTS_DIR/binwalk_output.txt"
+            fi
+            ;;
+        "Pngcheck")
+            output=$(stdbuf -oL pngcheck -vvv -t -p "$IMAGE_FILE" 2>/dev/null)
+            if [ -zRAS "$output" ]; then
+                style_output "Error: Pngcheck produced no output. Ensure the file is a valid PNG."
+            else
+                echo "Debug: Output before paging: '$output'" >&2
+                echo "$output" > "$RESULTS_DIR/pngcheck_output.txt"
+                echo "$output" | gum pager
+                style_output "Saved to $RESULTS_DIR/pngcheck_output.txt"
+            fi
+            ;;
+        "Mat2")
+            output=$(stdbuf -oL mat2 -s "$IMAGE_FILE" 2>/dev/null)
+            if [ -z "$output" ]; then
+                style_output "Error: Mat2 produced no output."
+            else
+                echo "Debug: Output before paging: '$output'" >&2
+                echo "$output" > "$RESULTS_DIR/mat2_output.txt"
+                echo "$output" | gum pager
+                style_output "Saved to $RESULTS_DIR/mat2_output.txt"
+            fi
+            ;;
+        "Aperi'Solve")
+            aperisolve "$IMAGE_FILE"
+            style_output "Aperi'Solve results are displayed in your browser. No terminal output is generated to save."
+            style_output "Check for any files generated by Aperi'Solve in the current directory."
+            ;;
+        "Run All")
+            run_all
+            ;;
+        "Exit")
+            exit 0
+            ;;
+    esac
+}
+
+# Run all tools at once
+function run_all {
+    echo "Running all scripts against your image file..."
+
+    output=$(stdbuf -oL file "$IMAGE_FILE" 2>/dev/null)
+    if [ -n "$output" ]; then
+        echo "Debug: Output before styling: '$output'" >&2
+        echo "$output" > "$RESULTS_DIR/file_output.txt"
+        style_output "$output"
+    fi
+
+    output=$(stdbuf -oL strings -n 7 -t x "$IMAGE_FILE" 2>/dev/null)
+    if [ -n "$output" ]; then
+        echo "Debug: Output before paging: '$output'" >&2
+        echo "$output" > "$RESULTS_DIR/strings_output.txt"
+        echo "$output" | gum pager
+    fi
+
+    output=$(stdbuf -oL exiftool "$IMAGE_FILE" 2>/dev/null)
+    if [ -n "$output" ]; then
+        echo "Debug: Output before paging: '$output'" >&2
+        echo "$output" > "$RESULTS_DIR/exif_output.txt"
+        echo "$output" | gum pager
+    fi
+
+    output=$(stdbuf -oL binwalk -Me "$IMAGE_FILE" 2>/dev/null)
+    if [ -n "$output" ]; then
+        echo "Debug: Output before paging: '$output'" >&2
+        echo "$output" > "$RESULTS_DIR/binwalk_output.txt"
+        echo "$output" | gum pager
+    fi
+
+    output=$(stdbuf -oL pngcheck -vvv -t -p "$IMAGE_FILE" 2>/dev/null)
+    if [ -n "$output" ]; then
+        echo "Debug: Output before paging: '$output'" >&2
+        echo "$output" > "$RESULTS_DIR/pngcheck_output.txt"
+        echo "$output" | gum pager
+    fi
+
+    output=$(stdbuf -oL mat2 -s "$IMAGE_FILE" 2>/dev/null)
+    if [ -n "$output" ]; then
+        echo "Debug: Output before paging: '$output'" >&2
+        echo "$output" > "$RESULTS_DIR/mat2_output.txt"
+        echo "$output" | gum pager
+    fi
+
+    aperisolve "$IMAGE_FILE"
+
+    echo ""
+    echo -e "\033[35mWait for browser to launch Aperi'Solve! May take some time.\033[0m"
+    echo -e "\033[35mAperi'Solve results are displayed in your browser. No terminal output is generated to save.\033[0m"
+    echo -e "\033[35mCheck for any files generated by Aperi'Solve in the current directory.\033[0m"
+    echo ""
+    echo -e "\033[35mOther results are saved in: $RESULTS_DIR\033[0m"
+    echo ""
+    style_output "\033[35mThank you for hacking with CIA!\033[0m"
+    echo ""
+}
+
+# Function calls
+function main {
+    banner
+    echo "Select an image file to analyze:"
+    IMAGE_FILE=$(gum file --header="Choose an image file")
+    if [ -z "$IMAGE_FILE" ]; then
+        style_output "Error: No file selected. Exiting."
+        exit 1
+    fi
+    if [ ! -f "$IMAGE_FILE" ]; then
+        style_output "Error: Selected file '$IMAGE_FILE' does not exist or is not a regular file."
+        exit 1
+    fi
+    check_dependencies
+    menu
+}
+
+main
