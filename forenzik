@@ -255,7 +255,7 @@ function run_all {
     echo ""
     echo -e "\033[35mOther results are saved in: $RESULTS_DIR\033[0m"
     echo ""
-    style_output "\033[35mThank you for hacking with CIA!\033[0m"
+    style_output "Thank you for hacking with CIA!"
     echo ""
 }
 
