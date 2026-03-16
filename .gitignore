@@ -1,4 +1,7 @@
-stego_results_*
+stego_results_*/
+forenzik_results_*/
+.venv/
+__pycache__/
 debug.sh
 forenzik.bak
 test-file.png
